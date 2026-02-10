@@ -21,16 +21,10 @@ const isBadTitleCandidate = (txt: any): boolean => {
   const t = normKey(txt);
   if (!t) return true;
 
-  // Palabras que NO pueden ser nombre de receta
   const banned = [
-    "descripcion", "carta",
-    "proceso", "elaboracion", "elaboración",
-    "analisis", "análisis",
-    "articulo", "artículo",
-    "unidad", "unidades",
-    "merma", "coste", "costo",
-    "valor", "venta",
-    "matriz", "ingredientes"
+    "descripcion", "carta", "proceso", "elaboracion", "elaboración",
+    "analisis", "análisis", "articulo", "artículo", "unidad", "unidades",
+    "merma", "coste", "costo", "valor", "venta", "matriz", "ingredientes"
   ];
 
   return banned.some(w => t.includes(w));
@@ -51,16 +45,19 @@ const findColIndex = (headerRow: any[], candidates: string[]): number => {
 
 /**
  * Busca las filas que actúan como encabezado de tabla de ingredientes.
+ * Versión Flexible: Artículo + (Merma OR Unidad OR Coste/Costo)
  */
 const findHeaderRows = (matrix: any[][]): number[] => {
   const headerRows: number[] = [];
   for (let r = 0; r < matrix.length; r++) {
     const row = (matrix[r] || []).map(normKey);
-    // Regex para detectar "Artículo" incluso con mojibake (ArtÃ­culo)
+    
     const hasArticulo = row.some(v => /art.?culo/.test(v) || v.includes("articulo") || v.includes("art culo"));
     const hasMerma = row.some(v => v.includes("merma"));
+    const hasUnidad = row.some(v => v.includes("unidad") || v.includes("udm"));
+    const hasCosto = row.some(v => v.includes("costo") || v.includes("coste"));
     
-    if (hasArticulo && hasMerma) {
+    if (hasArticulo && (hasMerma || hasUnidad || hasCosto)) {
       headerRows.push(r);
     }
   }
@@ -68,8 +65,7 @@ const findHeaderRows = (matrix: any[][]): number[] => {
 };
 
 /**
- * Versión PRO de findRecipeTitle: Busca hacia arriba y escoge el mejor texto "tipo título"
- * filtrando etiquetas técnicas indeseadas.
+ * Busca el nombre de la receta mirando hacia arriba y escoge el mejor texto "tipo título".
  */
 const findRecipeTitle = (matrix: any[][], headerRowIdx: number): { nombre: string, titleRowIdx: number } => {
   let best = "";
@@ -77,23 +73,19 @@ const findRecipeTitle = (matrix: any[][], headerRowIdx: number): { nombre: strin
 
   for (let r = headerRowIdx - 1; r >= Math.max(0, headerRowIdx - 15); r--) {
     const row = matrix[r] || [];
-
-    // Tomamos solo textos con longitud razonable que no sean etiquetas técnicas
     const candidates = row
       .map(v => (v ?? "").toString().trim())
       .filter(v => v.length >= 4 && !isBadTitleCandidate(v));
 
-    // Preferencia: el más largo (suele ser el nombre completo)
     const localBest = candidates.sort((a, b) => b.length - a.length)[0];
 
     if (localBest) {
       best = localBest;
       bestRow = r;
-      break; // primer match bueno hacia arriba
+      break;
     }
   }
 
-  // Fallback si no encuentra
   if (!best) {
     best = `RECETA SIN NOMBRE (FILA ${headerRowIdx + 1})`;
   }
@@ -111,7 +103,6 @@ const getTextBelowLabelInBlock = (matrix: any[][], startRow: number, endRow: num
     for (let c = 0; c < row.length; c++) {
       const cellVal = normKey(row[c]);
       if (targets.some(t => cellVal.includes(t))) {
-        // El valor está justo debajo
         return (matrix[r + 1]?.[c] ?? "").toString().trim();
       }
     }
@@ -125,8 +116,7 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
   const allRecipes: RecipeWithIngredients[] = [];
   const excludedSheets = new Set(["INSUMOS", "MATRIZ CARTA", "DATOS", "CONFIG", "HOJA1", "MATRIZ"]);
 
-  console.log("--- PROCESANDO EXCEL (VERSIÓN PRO) ---");
-  console.log("Hojas detectadas:", workbook.SheetNames);
+  console.log("--- INICIO DE PROCESAMIENTO EXCEL (VERSIÓN PRO V2) ---");
 
   workbook.SheetNames.forEach((sheetName: string) => {
     if (excludedSheets.has(sheetName.toUpperCase())) return;
@@ -137,31 +127,23 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
     if (!matrix || matrix.length === 0) return;
 
     const headerRowsIdx = findHeaderRows(matrix);
-    console.log(`🔎 Hoja [${sheetName}]: ${headerRowsIdx.length} bloques detectados.`);
+    const sheetRecipes: RecipeWithIngredients[] = [];
 
     headerRowsIdx.forEach((hrIdx) => {
       const headerRow = matrix[hrIdx] || [];
       const { nombre, titleRowIdx } = findRecipeTitle(matrix, hrIdx);
       
-      console.log("📌 Título detectado:", nombre, "en hoja:", sheetName, "headerRow:", hrIdx+1);
-
-      // Identificación dinámica de columnas
       const colArticulo = findColIndex(headerRow, ["articulo", "artículo", "Articulo", "ArtÃ­culo"]);
       const colUnidad = findColIndex(headerRow, ["unidad medida", "unidad", "udm", "und"]);
       const colCant = findColIndex(headerRow, ["unidades netas", "cantidad", "cant", "unidades"]);
       const colMerma = findColIndex(headerRow, ["% merma", "merma"]);
       const colCostoLin = findColIndex(headerRow, ["coste linea", "costo linea", "subtotal", "valor total"]);
 
-      if (colArticulo === -1) {
-        console.warn(`No se encontró columna 'Artículo' en receta ${nombre}. Saltando bloque.`);
-        return;
-      }
+      if (colArticulo === -1) return;
 
       const ingredients: Ingredient[] = [];
-      // Leer ingredientes hacia abajo hasta encontrar fin de bloque
       for (let r = hrIdx + 1; r < matrix.length; r++) {
         const articulo = (matrix[r]?.[colArticulo] ?? "").toString().trim();
-        // Fin de ingredientes si Artículo está vacío o es un totalizador
         if (!articulo || normKey(articulo).includes("costo del plato") || normKey(articulo).includes("valor de venta")) break;
 
         const unidad = colUnidad !== -1 ? (matrix[r]?.[colUnidad] ?? "").toString().trim() : "";
@@ -170,34 +152,21 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
         const costoLinea = colCostoLin !== -1 ? matrix[r]?.[colCostoLin] : 0;
 
         ingredients.push({
-          id_receta: `R-${sheetName}-${titleRowIdx}`,
+          id_receta: `${sheetName}::${hrIdx}::${nombre}`, // ID basado en fila header para unicidad absoluta
           insumo: articulo,
-          unidad: unidad,
+          unidad,
           cantidad: !isNaN(parseFloat(cantidad)) ? Math.round(parseFloat(cantidad) * 100) / 100 : cantidad,
-          merma: merma,
+          merma,
           costo_linea: typeof costoLinea === "number" ? Math.round(costoLinea) : 0
         });
       }
 
-      // Definir rango de búsqueda para metadatos del bloque
       const blockStart = titleRowIdx;
       const blockEnd = Math.min(matrix.length - 1, hrIdx + ingredients.length + 30);
 
-      const descripcionCarta = getTextBelowLabelInBlock(
-        matrix, 
-        blockStart, 
-        blockEnd, 
-        ["descripcion de la carta", "descripcion carta"]
-      );
+      const descripcionCarta = getTextBelowLabelInBlock(matrix, blockStart, blockEnd, ["descripcion de la carta", "descripcion carta"]);
+      const procesoElaboracion = getTextBelowLabelInBlock(matrix, blockStart, blockEnd, ["proceso de elaboracion", "proceso de elaboración", "preparacion", "preparación", "procedimiento"]);
 
-      const procesoElaboracion = getTextBelowLabelInBlock(
-        matrix, 
-        blockStart, 
-        blockEnd, 
-        ["proceso de elaboracion", "proceso de elaboración", "preparacion", "preparación", "procedimiento"]
-      );
-
-      // Extraer costos del plato
       let costo_plato = 0;
       let valor_venta = 0;
       for (let r = hrIdx; r <= blockEnd; r++) {
@@ -215,9 +184,8 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
         });
       }
 
-      // Fix: Removing 'nombreReceta' and 'nombre' properties to comply with RecipeWithIngredients interface
-      allRecipes.push({
-        id_receta: `R-${sheetName}-${titleRowIdx}-${hrIdx}`,
+      const newRecipe: RecipeWithIngredients = {
+        id_receta: `${sheetName}::${hrIdx}::${nombre}`,
         nombre_receta: nombre,
         familia: sheetName,
         categoria: "CARTA",
@@ -231,13 +199,20 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
         ingredients,
         costo_plato,
         valor_venta
-      });
+      };
+
+      sheetRecipes.push(newRecipe);
     });
+
+    // Diagnóstico específico solicitado para ENTRE PANES
+    if (sheetName.toUpperCase() === "ENTRE PANES") {
+      console.log(`[DIAGNÓSTICO] Hoja 'ENTRE PANES' detectó ${sheetRecipes.length} recetas.`);
+      console.table(sheetRecipes.map(r => ({ nombre: r.nombre_receta, id: r.id_receta })));
+    }
+
+    allRecipes.push(...sheetRecipes);
   });
 
-  const recipesTotal = allRecipes.length;
-  const familiesTotal = [...new Set(allRecipes.map(r => r.familia))].length;
-  console.log(`✅ ÉXITO: ${recipesTotal} recetas cargadas en ${familiesTotal} familias.`);
-
+  console.log(`--- FIN PROCESAMIENTO: ${allRecipes.length} recetas totales ---`);
   return allRecipes;
 };

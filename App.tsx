@@ -43,7 +43,7 @@ const App: React.FC = () => {
       try {
         const ab = evt.target?.result as ArrayBuffer;
         const data = parseHotWingsExcel(ab);
-        if (data.length === 0) throw new Error("No se detectaron recetas en el archivo. Verifique el formato de los bloques (Artículo + Merma).");
+        if (data.length === 0) throw new Error("No se detectaron recetas en el archivo. Verifique el formato de los bloques (Artículo + Merma/Unidad).");
         setRecipes(data);
         setCurrentFamily(null);
         setSelectedRecipeId(null);
@@ -57,18 +57,6 @@ const App: React.FC = () => {
     reader.readAsArrayBuffer(file);
   };
 
-  // Diagnostic Logs
-  useEffect(() => {
-    if (recipes.length > 0) {
-      const familyList = [...new Set(recipes.map(r => r.familia))];
-      console.log("--- APP STATE DIAGNOSTIC ---");
-      console.log("Total Recetas:", recipes.length);
-      console.log("Total Familias:", familyList.length);
-      console.log("Familias:", familyList);
-    }
-  }, [recipes]);
-
-  // Display all families
   const families = useMemo(() => {
     const uniqueFamilies = [...new Set(recipes.map(r => r.familia))].filter(Boolean);
     return uniqueFamilies.sort();
@@ -76,10 +64,11 @@ const App: React.FC = () => {
 
   const filteredRecipes = useMemo(() => {
     return recipes.filter(r => {
+      const searchLower = searchTerm.toLowerCase();
       const matchesSearch = 
-        r.nombre_receta.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.ingredients.some(i => i.insumo.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (r.descripcionCarta || "").toLowerCase().includes(searchTerm.toLowerCase());
+        r.nombre_receta.toLowerCase().includes(searchLower) ||
+        r.ingredients.some(i => i.insumo.toLowerCase().includes(searchLower)) ||
+        (r.descripcionCarta || "").toLowerCase().includes(searchLower);
       
       const matchesFamily = r.familia === currentFamily;
       return matchesSearch && matchesFamily;
@@ -168,6 +157,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
+            {/* RENDERIZADO COMPLETO: No se usa slice ni límites de visualización */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredRecipes.map((recipe) => (
                 <RecipeCard 
@@ -223,7 +213,7 @@ const App: React.FC = () => {
       </main>
       
       <footer className="py-10 text-center border-t border-gray-100">
-        <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.5em]">Hot Wings Master Recipe System v3.2</p>
+        <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.5em]">Hot Wings Master Recipe System v3.3</p>
       </footer>
     </div>
   );

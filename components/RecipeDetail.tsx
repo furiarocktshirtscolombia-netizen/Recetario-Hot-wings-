@@ -61,13 +61,6 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
 
   const ingredients = useMemo(() => normalizeIngredients(recipe), [recipe]);
 
-  const margin = useMemo(() => {
-    if (valorVenta != null && costoPlato != null && valorVenta > 0) {
-      return (((valorVenta - costoPlato) / valorVenta) * 100).toFixed(1);
-    }
-    return null;
-  }, [valorVenta, costoPlato]);
-
   const normalizedRecipe = useMemo(() => ({
     ...recipe,
     familia,
@@ -104,43 +97,13 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100 space-y-8">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
             <div>
               <span className="text-xs font-black text-orange-600 uppercase tracking-[0.3em]">{familia}</span>
               <h2 className="text-4xl font-black text-zinc-900 leading-tight uppercase tracking-tighter mt-1">
                 {nombreReceta}
               </h2>
             </div>
-
-            {costoPlato != null && costoPlato > 0 ? (
-              <div className="p-6 bg-zinc-900 rounded-[2rem] text-white space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Costo Matriz</span>
-                    <p className="text-2xl font-black text-orange-500">${costoPlato.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Valor Venta</span>
-                    <p className="text-2xl font-black text-white">
-                      {valorVenta != null ? `$${valorVenta.toLocaleString()}` : '—'}
-                    </p>
-                  </div>
-                </div>
-                {margin && (
-                  <div className="pt-6 border-t border-zinc-800 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-zinc-400 uppercase">Utilidad Bruta</span>
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-green-400" />
-                      <span className="text-3xl font-black text-green-400">{margin}%</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="p-6 bg-gray-50 rounded-[2rem] text-center border-2 border-dashed border-gray-200">
-                <p className="text-xs font-bold text-gray-400 uppercase">Análisis de costos no disponible</p>
-              </div>
-            )}
           </div>
 
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
@@ -171,9 +134,8 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
                   <thead>
                     <tr className="text-gray-400 uppercase text-[10px] font-black tracking-[0.2em] border-b border-gray-100">
                       <th className="pb-6 px-2">Artículo</th>
+                      <th className="pb-6 px-2 text-right">Unidad</th>
                       <th className="pb-6 px-2 text-right">Cantidad</th>
-                      <th className="pb-6 px-2">Unidad</th>
-                      <th className="pb-6 px-2 text-right">Subtotal</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -182,12 +144,9 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
                         <td className="py-5 px-2 font-black text-zinc-800 text-lg uppercase tracking-tight">
                           {ing.insumo}
                         </td>
+                        <td className="py-5 px-2 text-right text-zinc-400 font-bold uppercase text-xs">{ing.unidad}</td>
                         <td className="py-5 px-2 text-right font-black text-2xl text-orange-600 font-mono">
                           {ing.cantidad}
-                        </td>
-                        <td className="py-5 px-2 text-zinc-400 font-bold uppercase text-xs">{ing.unidad}</td>
-                        <td className="py-5 px-2 text-right font-mono text-zinc-400 text-sm">
-                          {ing.costo_linea != null ? `$${Number(ing.costo_linea).toLocaleString()}` : '-'}
                         </td>
                       </tr>
                     ))}
