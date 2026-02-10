@@ -82,28 +82,55 @@ function findHeaderRows(matrix: any[][]): number[] {
   return rows;
 }
 
+/**
+ * Verifica si un texto NO es un buen candidato para ser el nombre de la receta.
+ * Descarta palabras clave técnicas y valores que son puramente numéricos.
+ */
 function isBadTitleCandidate(txt: any): boolean {
+  if (typeof txt === "number") return true;
+  
   const t = normKey(txt);
   if (!t || t.length < 4) return true;
+
+  // Ignorar cadenas que son puramente números (ej: "11784.63...")
+  if (!isNaN(Number(t.replace(/,/g, '.')))) return true;
+
   const banned = [
     "descripcion", "carta", "proceso", "elaboracion", "analisis", "receta", 
-    "articulo", "unidad", "unidades", "merma", "coste", "costo", "valor", 
-    "venta", "matriz", "ingredientes", "margen", "error", "ipo", "ganancia"
+    "articulo", "ingrediente", "unidad", "unidades", "und", "cant", "cantidad",
+    "merma", "coste", "costo", "valor", "venta", "matriz", "ingredientes", 
+    "margen", "error", "ipo", "ganancia", "subtotal", "total", "porcentual",
+    "hoja de", "formato", "variables", "parametros", "preparacion"
   ];
+
   return banned.some(w => t.includes(w));
 }
 
+/**
+ * Busca el nombre de la receta hacia arriba del encabezado.
+ * Ignora números y prioriza el texto más largo que contenga letras.
+ */
 function findRecipeTitle(matrix: any[][], headerRowIdx: number): { nombre: string; titleRowIdx: number } {
-  for (let r = headerRowIdx - 1; r >= Math.max(0, headerRowIdx - 15); r--) {
+  // Busca hacia arriba hasta 20 filas
+  for (let r = headerRowIdx - 1; r >= Math.max(0, headerRowIdx - 20); r--) {
     const row = matrix[r] || [];
+    
     const candidates = row
+      .filter(v => typeof v === "string") // Ignora valores que ya vienen como números en Excel
       .map(v => (v ?? "").toString().trim())
-      .filter(v => !isBadTitleCandidate(v));
+      .filter(v => 
+        v.length >= 4 && 
+        !isBadTitleCandidate(v) &&
+        /[a-zA-Z]/.test(v) // ✅ El nombre debe contener al menos una letra
+      );
+
     if (candidates.length > 0) {
+      // Prioriza el texto más largo de la fila (suele ser el nombre real)
       const best = candidates.sort((a, b) => b.length - a.length)[0];
       return { nombre: best, titleRowIdx: r };
     }
   }
+
   return { nombre: `RECETA SIN NOMBRE (FILA ${headerRowIdx + 1})`, titleRowIdx: headerRowIdx };
 }
 
@@ -111,7 +138,6 @@ function getValueInColumnInRange(matrix: any[][], startRow: number, endRow: numb
   if (colIdx === -1) return "";
   for (let r = startRow; r <= endRow; r++) {
     const v = (matrix[r]?.[colIdx] ?? "").toString().trim();
-    // Si la celda tiene contenido real, lo tomamos como URL o nombre de archivo
     if (v && v.length >= 3) {
       return v;
     }
@@ -162,11 +188,9 @@ function parseFamilySheet(sheetName: string, sheet: any): RecipeWithIngredients[
     const colCant = norm.findIndex(v => v.includes("unidades") || v.includes("cantidad") || v.includes("cant"));
     const colCostoLin = norm.findIndex(v => v.includes("coste") || v.includes("costo") || v.includes("subtotal"));
     
-    // Detección de columna FOTO (O por defecto = índice 14)
     let colFoto = norm.findIndex(v => v === "foto" || v.includes("foto"));
     if (colFoto === -1) colFoto = 14; 
 
-    // Buscar el valor de la foto en el bloque de la receta
     const blockStartSearch = Math.max(0, titleRowIdx);
     const fotoValue = getValueInColumnInRange(matrix, blockStartSearch, blockEnd, colFoto);
 
