@@ -22,9 +22,9 @@ const App: React.FC = () => {
       setLoading(true);
       try {
         const data = await fetchRecipesFromJson();
-        setRecipes(data);
+        if (data && data.length > 0) setRecipes(data);
       } catch (err: any) {
-        console.warn("No se pudo cargar JSON inicial. Use el botón para cargar el Excel.");
+        console.warn("Esperando carga manual de Excel.");
       } finally {
         setLoading(false);
       }
@@ -43,7 +43,7 @@ const App: React.FC = () => {
       try {
         const ab = evt.target?.result as ArrayBuffer;
         const data = parseHotWingsExcel(ab);
-        if (data.length === 0) throw new Error("No se detectaron recetas en el archivo. Verifique el formato de los bloques (Artículo + Merma/Unidad).");
+        if (data.length === 0) throw new Error("No se detectaron recetas compatibles. Revisa el formato del archivo.");
         setRecipes(data);
         setCurrentFamily(null);
         setSelectedRecipeId(null);
@@ -67,8 +67,7 @@ const App: React.FC = () => {
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch = 
         r.nombre_receta.toLowerCase().includes(searchLower) ||
-        r.ingredients.some(i => i.insumo.toLowerCase().includes(searchLower)) ||
-        (r.descripcionCarta || "").toLowerCase().includes(searchLower);
+        r.ingredients.some(i => (i.insumo || "").toLowerCase().includes(searchLower));
       
       const matchesFamily = r.familia === currentFamily;
       return matchesSearch && matchesFamily;
@@ -83,7 +82,7 @@ const App: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-950 text-orange-600">
         <ChefHat className="w-20 h-20 animate-bounce mb-4" />
-        <p className="font-black uppercase tracking-[0.3em] text-xs text-zinc-400">Sincronizando Matriz Hot Wings...</p>
+        <p className="font-black uppercase tracking-[0.3em] text-xs text-zinc-400">Analizando Matrix Operativa...</p>
       </div>
     );
   }
@@ -96,7 +95,7 @@ const App: React.FC = () => {
             className="flex items-center gap-3 cursor-pointer" 
             onClick={() => { setCurrentFamily(null); setSelectedRecipeId(null); }}
           >
-            <div className="bg-zinc-900 p-2 rounded-xl">
+            <div className="bg-zinc-900 p-2 rounded-xl shadow-lg">
               <ChefHat className="text-white w-6 h-6" />
             </div>
             <h1 className="text-xl font-black text-zinc-900 tracking-tighter uppercase">
@@ -109,7 +108,7 @@ const App: React.FC = () => {
             className="bg-orange-600 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-zinc-900 transition-all flex items-center gap-2 shadow-lg shadow-orange-100"
           >
             <Upload className="w-4 h-4" />
-            ACTUALIZAR EXCEL
+            Sincronizar Excel
           </button>
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
         </div>
@@ -149,7 +148,7 @@ const App: React.FC = () => {
                 <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
                 <input 
                   type="text"
-                  placeholder="Buscar receta o ingrediente..."
+                  placeholder="Buscar en esta familia..."
                   className="w-full pl-14 pr-6 py-4 bg-white border-none rounded-2xl shadow-sm focus:ring-4 focus:ring-orange-100 transition font-bold"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -157,7 +156,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* RENDERIZADO COMPLETO: No se usa slice ni límites de visualización */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredRecipes.map((recipe) => (
                 <RecipeCard 
@@ -171,8 +169,8 @@ const App: React.FC = () => {
         ) : (
           <div className="space-y-8 animate-in fade-in duration-500 text-center py-10">
             <div className="mb-12">
-              <h2 className="text-5xl font-black text-zinc-900 uppercase tracking-tighter italic">Recetario Maestro</h2>
-              <p className="text-gray-400 font-medium mt-2">Detección avanzada por bloques de matriz operativa</p>
+              <h2 className="text-5xl font-black text-zinc-900 uppercase tracking-tighter italic">Base de Recetas</h2>
+              <p className="text-gray-400 font-medium mt-2">Explora la matriz técnica completa de Hot Wings</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -188,7 +186,7 @@ const App: React.FC = () => {
                       <span className="text-orange-600 font-black text-xs uppercase tracking-[0.2em] mb-4">Familia</span>
                       <h3 className="text-3xl font-black text-zinc-900 uppercase leading-none">{family}</h3>
                       <div className="mt-8 flex items-center justify-between">
-                        <span className="text-gray-300 font-bold text-sm">
+                        <span className="text-gray-400 font-bold text-sm">
                           {count} Recetas
                         </span>
                         <div className="bg-gray-50 p-2 rounded-full group-hover:bg-orange-50 group-hover:text-orange-600 transition-colors">
@@ -204,7 +202,7 @@ const App: React.FC = () => {
               {families.length === 0 && (
                 <div className="col-span-full bg-white p-20 rounded-[3rem] border-4 border-dashed border-gray-100 flex flex-col items-center">
                   <Utensils className="w-20 h-20 text-gray-100 mb-6" />
-                  <p className="text-gray-400 font-bold text-xl mb-6">No hay datos. Cargue el archivo Excel "Matriz de costos" para empezar.</p>
+                  <p className="text-gray-400 font-bold text-xl mb-6">Matriz vacía. Por favor cargue el archivo de costos.</p>
                 </div>
               )}
             </div>
@@ -213,7 +211,7 @@ const App: React.FC = () => {
       </main>
       
       <footer className="py-10 text-center border-t border-gray-100">
-        <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.5em]">Hot Wings Master Recipe System v3.3</p>
+        <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.5em]">Hot Wings Master Recipe System v3.6</p>
       </footer>
     </div>
   );

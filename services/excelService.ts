@@ -4,215 +4,213 @@ import { RecipeWithIngredients, Ingredient } from '../types';
 /**
  * Normalización robusta para manejar tildes, caracteres invisibles y errores de codificación.
  */
-const normKey = (x: any): string => {
+function normKey(x: any): string {
   let s = (x ?? "").toString().toLowerCase();
-  // Quitar diacríticos
   s = s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-  // Quitar caracteres invisibles/basura (soft hyphens, etc.)
   s = s.replace(/[\u00AD\u200B-\u200D\uFEFF]/g, "");
-  // Normalizar espacios
-  return s.replace(/\s+/g, " ").trim();
-};
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
 
 /**
- * Filtra candidatos a título que contienen palabras clave técnicas o de etiquetas.
+ * A) Leer la hoja completa con un “ref extendido” y rellenar MERGES.
  */
-const isBadTitleCandidate = (txt: any): boolean => {
-  const t = normKey(txt);
-  if (!t) return true;
+function sheetToFullMatrixWide(sheet: any, maxRows = 700, maxCols = 50): any[][] {
+  const XLSX = (window as any).XLSX;
+  const ref = sheet["!ref"] || `A1:${XLSX.utils.encode_cell({ r: maxRows - 1, c: maxCols - 1 })}`;
+  const base = XLSX.utils.decode_range(ref);
 
-  const banned = [
-    "descripcion", "carta", "proceso", "elaboracion", "elaboración",
-    "analisis", "análisis", "articulo", "artículo", "unidad", "unidades",
-    "merma", "coste", "costo", "valor", "venta", "matriz", "ingredientes"
-  ];
+  const range = {
+    s: { r: 0, c: 0 },
+    e: {
+      r: Math.max(base.e.r, maxRows - 1),
+      c: Math.max(base.e.c, maxCols - 1),
+    },
+  };
 
-  return banned.some(w => t.includes(w));
-};
+  const rows = range.e.r - range.s.r + 1;
+  const cols = range.e.c - range.s.c + 1;
+  const matrix = Array.from({ length: rows }, () => Array(cols).fill(""));
 
-/**
- * Encuentra el índice de una columna buscando coincidencias en una lista de nombres posibles.
- */
-const findColIndex = (headerRow: any[], candidates: string[]): number => {
-  const normalizedHeader = (headerRow || []).map(normKey);
-  for (let i = 0; i < normalizedHeader.length; i++) {
-    const cell = normalizedHeader[i];
-    if (!cell) continue;
-    if (candidates.some(c => cell.includes(normKey(c)))) return i;
-  }
-  return -1;
-};
-
-/**
- * Busca las filas que actúan como encabezado de tabla de ingredientes.
- * Versión Flexible: Artículo + (Merma OR Unidad OR Coste/Costo)
- */
-const findHeaderRows = (matrix: any[][]): number[] => {
-  const headerRows: number[] = [];
-  for (let r = 0; r < matrix.length; r++) {
-    const row = (matrix[r] || []).map(normKey);
-    
-    const hasArticulo = row.some(v => /art.?culo/.test(v) || v.includes("articulo") || v.includes("art culo"));
-    const hasMerma = row.some(v => v.includes("merma"));
-    const hasUnidad = row.some(v => v.includes("unidad") || v.includes("udm"));
-    const hasCosto = row.some(v => v.includes("costo") || v.includes("coste"));
-    
-    if (hasArticulo && (hasMerma || hasUnidad || hasCosto)) {
-      headerRows.push(r);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const addr = XLSX.utils.encode_cell({ r: range.s.r + r, c: range.s.c + c });
+      matrix[r][c] = sheet[addr]?.v ?? "";
     }
   }
-  return headerRows;
-};
+
+  const merges = sheet["!merges"] || [];
+  for (const m of merges) {
+    const rStart = m.s.r - range.s.r;
+    const value = matrix[rStart]?.[m.s.c - range.s.c];
+    for (let r = m.s.r - range.s.r; r <= m.e.r - range.s.r; r++) {
+      for (let c = m.s.c - range.s.c; c <= m.e.c - range.s.c; c++) {
+        if ((matrix[r]?.[c] ?? "") === "") {
+          if (matrix[r]) matrix[r][c] = value;
+        }
+      }
+    }
+  }
+  return matrix;
+}
 
 /**
- * Busca el nombre de la receta mirando hacia arriba y escoge el mejor texto "tipo título".
+ * B) Detector de headers MULTI-SEÑAL (acepta Artículo O Ingrediente).
  */
-const findRecipeTitle = (matrix: any[][], headerRowIdx: number): { nombre: string, titleRowIdx: number } => {
-  let best = "";
-  let bestRow = headerRowIdx;
+function isHeaderRow(row: any[]): boolean {
+  const r = (row || []).map(normKey);
+  
+  // Columna principal puede ser Artículo o Ingrediente
+  const hasItem = 
+    r.some(v => /art.?culo/.test(v)) || 
+    r.some(v => v.includes("ingrediente"));
 
+  // Señales de tabla (Al menos 1 señal adicional para confirmar que es tabla de costos)
+  const signals = [
+    r.some(v => v.includes("unidad") || v === "und"),
+    r.some(v => v.includes("unidades") || v.includes("cant") || v.includes("cantidad")),
+    r.some(v => v.includes("merma")),
+    r.some(v => v.includes("coste") || v.includes("costo") || v.includes("subtotal")),
+  ].filter(Boolean).length;
+
+  return hasItem && signals >= 1;
+}
+
+function findHeaderRows(matrix: any[][]): number[] {
+  const rows: number[] = [];
+  for (let i = 0; i < matrix.length; i++) {
+    if (isHeaderRow(matrix[i])) rows.push(i);
+  }
+  return rows;
+}
+
+function isBadTitleCandidate(txt: any): boolean {
+  const t = normKey(txt);
+  if (!t || t.length < 4) return true;
+  const banned = [
+    "descripcion", "carta", "proceso", "elaboracion", "analisis", "receta", 
+    "articulo", "unidad", "unidades", "merma", "coste", "costo", "valor", 
+    "venta", "matriz", "ingredientes", "margen", "error", "ipo", "ganancia"
+  ];
+  return banned.some(w => t.includes(w));
+}
+
+function findRecipeTitle(matrix: any[][], headerRowIdx: number): { nombre: string; titleRowIdx: number } {
   for (let r = headerRowIdx - 1; r >= Math.max(0, headerRowIdx - 15); r--) {
     const row = matrix[r] || [];
     const candidates = row
       .map(v => (v ?? "").toString().trim())
-      .filter(v => v.length >= 4 && !isBadTitleCandidate(v));
-
-    const localBest = candidates.sort((a, b) => b.length - a.length)[0];
-
-    if (localBest) {
-      best = localBest;
-      bestRow = r;
-      break;
+      .filter(v => !isBadTitleCandidate(v));
+    if (candidates.length > 0) {
+      const best = candidates.sort((a, b) => b.length - a.length)[0];
+      return { nombre: best, titleRowIdx: r };
     }
   }
+  return { nombre: `RECETA SIN NOMBRE (FILA ${headerRowIdx + 1})`, titleRowIdx: headerRowIdx };
+}
 
-  if (!best) {
-    best = `RECETA SIN NOMBRE (FILA ${headerRowIdx + 1})`;
-  }
-
-  return { nombre: best, titleRowIdx: bestRow };
-};
-
-/**
- * Busca una etiqueta en un bloque de celdas y devuelve el valor de la celda de abajo.
- */
-const getTextBelowLabelInBlock = (matrix: any[][], startRow: number, endRow: number, labels: string[]): string => {
+function getTextBelowLabelInBlock(matrix: any[][], startRow: number, endRow: number, labels: string[]): string {
   const targets = labels.map(normKey);
   for (let r = startRow; r <= endRow; r++) {
     const row = matrix[r] || [];
     for (let c = 0; c < row.length; c++) {
-      const cellVal = normKey(row[c]);
-      if (targets.some(t => cellVal.includes(t))) {
-        return (matrix[r + 1]?.[c] ?? "").toString().trim();
+      const v = normKey(row[c]);
+      if (v && targets.some(t => v.includes(t))) {
+        const result = (matrix[r + 1]?.[c] || matrix[r + 2]?.[c] || "").toString().trim();
+        if (result) return result;
       }
     }
   }
   return "";
-};
+}
 
-export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredients[] => {
-  const data = new Uint8Array(arrayBuffer);
-  const workbook = (window as any).XLSX.read(data, { type: 'array' });
-  const allRecipes: RecipeWithIngredients[] = [];
-  const excludedSheets = new Set(["INSUMOS", "MATRIZ CARTA", "DATOS", "CONFIG", "HOJA1", "MATRIZ"]);
+function recipeId(sheetName: string, headerRowIdx: number, nombre: string): string {
+  return `${sheetName}::${headerRowIdx + 1}::${normKey(nombre)}`.replace(/\s+/g, '-');
+}
 
-  console.log("--- INICIO DE PROCESAMIENTO EXCEL (VERSIÓN PRO V2) ---");
+function parseFamilySheet(sheetName: string, sheet: any): RecipeWithIngredients[] {
+  const matrix = sheetToFullMatrixWide(sheet, 700, 50);
+  const headerRows = findHeaderRows(matrix);
+  const recipes: RecipeWithIngredients[] = [];
 
-  workbook.SheetNames.forEach((sheetName: string) => {
-    if (excludedSheets.has(sheetName.toUpperCase())) return;
+  if (sheetName.toUpperCase() === "ALITAS") {
+    console.log(`%c[ALITAS] Encabezados detectados: ${headerRows.length}`, "color: #ea580c; font-weight: bold;");
+  }
 
-    const sheet = workbook.Sheets[sheetName];
-    const matrix: any[][] = (window as any).XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    
-    if (!matrix || matrix.length === 0) return;
+  for (let i = 0; i < headerRows.length; i++) {
+    const headerRowIdx = headerRows[i];
+    const nextHeader = (i < headerRows.length - 1) ? headerRows[i + 1] : matrix.length;
+    const blockEnd = nextHeader - 1;
 
-    const headerRowsIdx = findHeaderRows(matrix);
-    const sheetRecipes: RecipeWithIngredients[] = [];
+    const { nombre, titleRowIdx } = findRecipeTitle(matrix, headerRowIdx);
 
-    headerRowsIdx.forEach((hrIdx) => {
-      const headerRow = matrix[hrIdx] || [];
-      const { nombre, titleRowIdx } = findRecipeTitle(matrix, hrIdx);
-      
-      const colArticulo = findColIndex(headerRow, ["articulo", "artículo", "Articulo", "ArtÃ­culo"]);
-      const colUnidad = findColIndex(headerRow, ["unidad medida", "unidad", "udm", "und"]);
-      const colCant = findColIndex(headerRow, ["unidades netas", "cantidad", "cant", "unidades"]);
-      const colMerma = findColIndex(headerRow, ["% merma", "merma"]);
-      const colCostoLin = findColIndex(headerRow, ["coste linea", "costo linea", "subtotal", "valor total"]);
+    const desc = getTextBelowLabelInBlock(matrix, headerRowIdx, Math.min(matrix.length - 1, headerRowIdx + 40), ["descripcion carta"]);
+    const proc = getTextBelowLabelInBlock(matrix, headerRowIdx, Math.min(matrix.length - 1, headerRowIdx + 50), ["proceso de elaboracion", "proceso de elaboración", "preparacion", "procedimiento"]);
+    const costo = getTextBelowLabelInBlock(matrix, headerRowIdx, Math.min(matrix.length - 1, headerRowIdx + 30), ["costo del plato"]);
+    const venta = getTextBelowLabelInBlock(matrix, headerRowIdx, Math.min(matrix.length - 1, headerRowIdx + 30), ["valor de venta"]);
 
-      if (colArticulo === -1) return;
+    const header = matrix[headerRowIdx] || [];
+    const norm = header.map(normKey);
+    const colItem = norm.findIndex(v => /art.?culo/.test(v) || v.includes("ingrediente"));
+    const colUnd = norm.findIndex(v => v.includes("unidad") || v === "und");
+    const colCant = norm.findIndex(v => v.includes("unidades") || v.includes("cantidad") || v.includes("cant"));
+    const colCostoLin = norm.findIndex(v => v.includes("coste") || v.includes("costo") || v.includes("subtotal"));
 
-      const ingredients: Ingredient[] = [];
-      for (let r = hrIdx + 1; r < matrix.length; r++) {
-        const articulo = (matrix[r]?.[colArticulo] ?? "").toString().trim();
-        if (!articulo || normKey(articulo).includes("costo del plato") || normKey(articulo).includes("valor de venta")) break;
+    if (colItem === -1) continue;
 
-        const unidad = colUnidad !== -1 ? (matrix[r]?.[colUnidad] ?? "").toString().trim() : "";
-        const cantidad = colCant !== -1 ? matrix[r]?.[colCant] : "";
-        const merma = colMerma !== -1 ? matrix[r]?.[colMerma] : "";
-        const costoLinea = colCostoLin !== -1 ? matrix[r]?.[colCostoLin] : 0;
+    const items: Ingredient[] = [];
+    for (let r = headerRowIdx + 1; r <= blockEnd; r++) {
+      const articulo = (matrix[r]?.[colItem] ?? "").toString().trim();
+      // Si la celda está vacía o detectamos el inicio de otra sección técnica, cortamos
+      if (!articulo || normKey(articulo).includes("costo del plato") || normKey(articulo).includes("valor de venta")) break;
 
-        ingredients.push({
-          id_receta: `${sheetName}::${hrIdx}::${nombre}`, // ID basado en fila header para unicidad absoluta
-          insumo: articulo,
-          unidad,
-          cantidad: !isNaN(parseFloat(cantidad)) ? Math.round(parseFloat(cantidad) * 100) / 100 : cantidad,
-          merma,
-          costo_linea: typeof costoLinea === "number" ? Math.round(costoLinea) : 0
-        });
-      }
+      items.push({
+        id_receta: recipeId(sheetName, headerRowIdx, nombre),
+        insumo: articulo,
+        unidad: colUnd !== -1 ? (matrix[r]?.[colUnd] || "UND") : "UND",
+        cantidad: colCant !== -1 ? matrix[r]?.[colCant] : 0,
+        costo_linea: colCostoLin !== -1 ? (Number(String(matrix[r]?.[colCostoLin]).replace(/[^\d.-]/g, "")) || 0) : 0
+      });
+    }
 
-      const blockStart = titleRowIdx;
-      const blockEnd = Math.min(matrix.length - 1, hrIdx + ingredients.length + 30);
-
-      const descripcionCarta = getTextBelowLabelInBlock(matrix, blockStart, blockEnd, ["descripcion de la carta", "descripcion carta"]);
-      const procesoElaboracion = getTextBelowLabelInBlock(matrix, blockStart, blockEnd, ["proceso de elaboracion", "proceso de elaboración", "preparacion", "preparación", "procedimiento"]);
-
-      let costo_plato = 0;
-      let valor_venta = 0;
-      for (let r = hrIdx; r <= blockEnd; r++) {
-        const row = matrix[r] || [];
-        row.forEach((cell, cIdx) => {
-          const text = normKey(cell);
-          if (text.includes("costo del plato")) {
-            const val = row[cIdx + 1] || row[cIdx + 2];
-            if (val) costo_plato = Math.round(parseFloat(val.toString().replace(/[^0-9.]/g, '')));
-          }
-          if (text.includes("valor de venta")) {
-            const val = row[cIdx + 1] || row[cIdx + 2];
-            if (val) valor_venta = Math.round(parseFloat(val.toString().replace(/[^0-9.]/g, '')));
-          }
-        });
-      }
-
-      const newRecipe: RecipeWithIngredients = {
-        id_receta: `${sheetName}::${hrIdx}::${nombre}`,
-        nombre_receta: nombre,
-        familia: sheetName,
-        categoria: "CARTA",
-        descripcion_carta: descripcionCarta,
-        descripcionCarta: descripcionCarta,
-        preparacion: procesoElaboracion,
-        procesoElaboracion: procesoElaboracion,
+    if (items.length > 0) {
+      recipes.push({
+        id_receta: recipeId(sheetName, headerRowIdx, nombre),
+        familia: sheetName.toUpperCase(),
+        categoria: "MATRIZ",
+        nombre_receta: nombre.toUpperCase(),
+        descripcion_carta: desc,
+        descripcionCarta: desc,
+        preparacion: proc,
+        procesoElaboracion: proc,
         rendimiento: "1",
         unidad_rendimiento: "PORCIÓN",
         foto: "",
-        ingredients,
-        costo_plato,
-        valor_venta
-      };
-
-      sheetRecipes.push(newRecipe);
-    });
-
-    // Diagnóstico específico solicitado para ENTRE PANES
-    if (sheetName.toUpperCase() === "ENTRE PANES") {
-      console.log(`[DIAGNÓSTICO] Hoja 'ENTRE PANES' detectó ${sheetRecipes.length} recetas.`);
-      console.table(sheetRecipes.map(r => ({ nombre: r.nombre_receta, id: r.id_receta })));
+        ingredients: items,
+        costo_plato: Math.round(Number(costo) || 0),
+        valor_venta: Math.round(Number(venta) || 0)
+      });
     }
+  }
 
-    allRecipes.push(...sheetRecipes);
+  return recipes;
+}
+
+export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredients[] => {
+  const XLSX = (window as any).XLSX;
+  const data = new Uint8Array(arrayBuffer);
+  const workbook = XLSX.read(data, { type: 'array' });
+  const excludedSheets = new Set(["INSUMOS", "DATOS", "CONFIG", "MATRIZ CARTA", "PORTADA", "PARAMETROS", "VARIABLES"]);
+
+  console.log("%c--- INICIO DE PROCESAMIENTO MATRIZ HOTWINGS ---", "color: orange; font-weight: bold; font-size: 14px;");
+
+  const results: RecipeWithIngredients[] = [];
+  workbook.SheetNames.forEach(sheetName => {
+    if (excludedSheets.has(sheetName.toUpperCase())) return;
+    const sheetRecipes = parseFamilySheet(sheetName, workbook.Sheets[sheetName]);
+    results.push(...sheetRecipes);
   });
 
-  console.log(`--- FIN PROCESAMIENTO: ${allRecipes.length} recetas totales ---`);
-  return allRecipes;
+  console.log(`%cTOTAL RECETAS DETECTADAS: ${results.length}`, "background: #22c55e; color: white; padding: 4px 10px; font-weight: bold; border-radius: 4px;");
+  return results;
 };
