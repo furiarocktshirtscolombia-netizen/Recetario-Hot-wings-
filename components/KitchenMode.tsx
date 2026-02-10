@@ -29,7 +29,6 @@ const KitchenMode: React.FC<KitchenModeProps> = ({ recipe, onExit }) => {
     
     requestWakeLock();
     
-    // Re-activar si el usuario cambia de pestaña y vuelve
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') requestWakeLock();
     };
@@ -57,21 +56,21 @@ const KitchenMode: React.FC<KitchenModeProps> = ({ recipe, onExit }) => {
   const steps = recipe.preparacion ? recipe.preparacion.split('\n').filter(s => s.trim() !== '') : [];
 
   return (
-    <div className="fixed inset-0 bg-black text-white z-50 flex flex-col overflow-hidden select-none">
+    <div className="fixed inset-0 bg-hw-bg text-hw-text z-50 flex flex-col overflow-hidden select-none">
       {/* Barra Superior de Control */}
-      <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900 shadow-2xl">
+      <div className="flex items-center justify-between p-4 border-b border-hw-border bg-hw-surface2 shadow-2xl">
         <div className="flex items-center gap-3">
-          <div className="bg-orange-600 p-2 rounded-lg">
+          <div className="bg-hw-orange p-2 rounded-lg">
             <ChefHat className="w-5 h-5 text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-orange-500 text-[10px] font-black uppercase tracking-[0.2em]">Cocinando ahora</span>
-            <h2 className="text-lg font-bold truncate max-w-[180px] sm:max-w-md">{recipe.nombre_receta}</h2>
+            <span className="text-hw-orange text-[10px] font-black uppercase tracking-[0.2em]">Cocinando ahora</span>
+            <h2 className="text-lg font-black truncate max-w-[180px] sm:max-w-md uppercase tracking-tight">{recipe.nombre_receta}</h2>
           </div>
         </div>
         <button 
           onClick={onExit}
-          className="flex items-center gap-2 bg-zinc-800 hover:bg-red-600 text-gray-400 hover:text-white px-4 py-2 rounded-full transition-all active:scale-90"
+          className="flex items-center gap-2 bg-hw-surface hover:bg-red-600 text-hw-muted hover:text-white px-4 py-2 rounded-full transition-all active:scale-90 border border-hw-border"
         >
           <span className="text-sm font-bold">Salir</span>
           <X className="w-5 h-5" />
@@ -79,13 +78,13 @@ const KitchenMode: React.FC<KitchenModeProps> = ({ recipe, onExit }) => {
       </div>
 
       {/* Selectores de Modo (Tabs Grandes) */}
-      <div className="flex p-3 gap-3 bg-zinc-950">
+      <div className="flex p-3 gap-3 bg-hw-bg">
         <button 
           onClick={() => setActiveTab('ingredients')}
           className={`flex-1 flex items-center justify-center gap-3 py-5 rounded-2xl font-black text-lg transition-all ${
             activeTab === 'ingredients' 
-            ? 'bg-orange-600 text-white shadow-[0_0_20px_rgba(234,88,12,0.3)] scale-[1.02]' 
-            : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
+            ? 'bg-hw-orange text-white shadow-[0_0_20px_rgba(255,77,45,0.3)] scale-[1.02]' 
+            : 'bg-hw-surface text-hw-muted border border-hw-border'
           }`}
         >
           <ListCheck className="w-6 h-6" />
@@ -95,8 +94,8 @@ const KitchenMode: React.FC<KitchenModeProps> = ({ recipe, onExit }) => {
           onClick={() => setActiveTab('steps')}
           className={`flex-1 flex items-center justify-center gap-3 py-5 rounded-2xl font-black text-lg transition-all ${
             activeTab === 'steps' 
-            ? 'bg-orange-600 text-white shadow-[0_0_20px_rgba(234,88,12,0.3)] scale-[1.02]' 
-            : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
+            ? 'bg-hw-orange text-white shadow-[0_0_20px_rgba(255,77,45,0.3)] scale-[1.02]' 
+            : 'bg-hw-surface text-hw-muted border border-hw-border'
           }`}
         >
           <BookOpen className="w-6 h-6" />
@@ -115,27 +114,26 @@ const KitchenMode: React.FC<KitchenModeProps> = ({ recipe, onExit }) => {
                   onClick={() => toggleIngredient(idx)}
                   className={`flex items-center gap-4 p-6 rounded-3xl border-2 transition-all cursor-pointer active:scale-[0.98] ${
                     checkedIngredients.includes(idx) 
-                    ? 'bg-zinc-900/50 border-zinc-800 opacity-30 scale-95' 
-                    : 'bg-zinc-900 border-zinc-700 shadow-xl'
+                    ? 'bg-hw-surface2 border-hw-border opacity-30 scale-95' 
+                    : 'bg-hw-surface border-hw-border shadow-xl'
                   }`}
                 >
                   {checkedIngredients.includes(idx) ? (
                     <CheckCircle2 className="w-10 h-10 text-green-500 flex-shrink-0" />
                   ) : (
-                    <Circle className="w-10 h-10 text-orange-500 flex-shrink-0" />
+                    <Circle className="w-10 h-10 text-hw-orange flex-shrink-0" />
                   )}
                   <div className="flex-1">
-                    <span className="block text-2xl font-black text-white mb-1 uppercase tracking-tight">{ing.insumo}</span>
+                    <span className="block text-2xl font-black text-hw-text mb-1 uppercase tracking-tight">{ing.insumo}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-4xl font-mono text-orange-400 font-black">{ing.cantidad}</span>
-                      <span className="text-xl text-zinc-400 font-bold uppercase">{ing.unidad}</span>
+                      <span className="text-4xl font-mono text-hw-orange font-black">{ing.cantidad}</span>
+                      <span className="text-xl text-hw-muted font-bold uppercase">{ing.unidad}</span>
                     </div>
-                    {ing.notas && <p className="text-zinc-500 italic mt-1 text-lg">💡 {ing.notas}</p>}
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-center py-20 text-zinc-600">No hay ingredientes registrados.</div>
+              <div className="text-center py-20 text-hw-muted font-black uppercase">No hay ingredientes registrados.</div>
             )}
           </div>
         ) : (
@@ -147,44 +145,44 @@ const KitchenMode: React.FC<KitchenModeProps> = ({ recipe, onExit }) => {
                   onClick={() => toggleStep(idx)}
                   className={`flex gap-6 p-8 rounded-[2rem] border-2 transition-all cursor-pointer active:scale-[0.99] ${
                     completedSteps.includes(idx) 
-                    ? 'bg-zinc-900/50 border-zinc-800 opacity-30' 
-                    : 'bg-zinc-900 border-zinc-700 shadow-xl'
+                    ? 'bg-hw-surface2 border-hw-border opacity-30' 
+                    : 'bg-hw-surface border-hw-border shadow-xl'
                   }`}
                 >
                   <div className={`flex-shrink-0 w-16 h-16 rounded-3xl flex items-center justify-center font-black text-3xl shadow-lg ${
-                    completedSteps.includes(idx) ? 'bg-zinc-800 text-zinc-600' : 'bg-orange-600 text-white'
+                    completedSteps.includes(idx) ? 'bg-hw-surface2 text-hw-muted' : 'bg-hw-orange text-white'
                   }`}>
                     {idx + 1}
                   </div>
-                  <p className={`text-3xl leading-snug font-bold ${
-                    completedSteps.includes(idx) ? 'line-through text-zinc-600' : 'text-zinc-100'
+                  <p className={`text-3xl leading-snug font-black ${
+                    completedSteps.includes(idx) ? 'line-through text-hw-muted' : 'text-hw-text'
                   }`}>
                     {step}
                   </p>
                 </div>
               ))
             ) : (
-              <div className="text-center py-20 text-zinc-600">No hay pasos de preparación registrados.</div>
+              <div className="text-center py-20 text-hw-muted font-black uppercase">No hay pasos de preparación registrados.</div>
             )}
           </div>
         )}
       </div>
 
       {/* Footer de Progreso */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-zinc-900/90 backdrop-blur-md border-t border-zinc-800 flex justify-between items-center px-8">
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-hw-surface2/90 backdrop-blur-md border-t border-hw-border flex justify-between items-center px-8">
         <div className="flex flex-col">
-          <span className="text-zinc-500 text-[10px] font-bold uppercase">Progreso actual</span>
+          <span className="text-hw-muted text-[10px] font-bold uppercase tracking-widest">Progreso actual</span>
           <div className="flex items-center gap-2">
-            <div className="w-32 h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="w-32 h-2 bg-hw-bg rounded-full overflow-hidden border border-hw-border">
                <div 
-                className="h-full bg-orange-600 transition-all duration-500" 
+                className="h-full bg-hw-orange transition-all duration-500 shadow-[0_0_10px_rgba(255,77,45,0.5)]" 
                 style={{ width: `${activeTab === 'ingredients' 
-                  ? (checkedIngredients.length / recipe.ingredients.length) * 100 
-                  : (completedSteps.length / steps.length) * 100}%` 
+                  ? (checkedIngredients.length / (recipe.ingredients.length || 1)) * 100 
+                  : (completedSteps.length / (steps.length || 1)) * 100}%` 
                 }}
               ></div>
             </div>
-            <span className="text-orange-500 font-black text-sm">
+            <span className="text-hw-orange font-black text-sm">
               {activeTab === 'ingredients' 
                 ? `${checkedIngredients.length}/${recipe.ingredients.length}` 
                 : `${completedSteps.length}/${steps.length}`
@@ -193,10 +191,10 @@ const KitchenMode: React.FC<KitchenModeProps> = ({ recipe, onExit }) => {
           </div>
         </div>
         
-        <div className="flex items-center gap-4 text-zinc-500">
+        <div className="flex items-center gap-4 text-hw-muted">
            <div className="flex flex-col items-end">
-             <span className="text-[10px] uppercase font-bold">Rendimiento</span>
-             <span className="text-white font-bold">{recipe.rendimiento} {recipe.unidad_rendimiento}</span>
+             <span className="text-[10px] uppercase font-bold tracking-widest">Rendimiento</span>
+             <span className="text-hw-text font-black uppercase">{recipe.rendimiento} {recipe.unidad_rendimiento}</span>
            </div>
         </div>
       </div>
