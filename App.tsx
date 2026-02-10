@@ -92,13 +92,21 @@ const App: React.FC = () => {
       <header className="bg-hw-surface2 border-b border-hw-border px-6 py-4 sticky top-0 z-50 shadow-xl">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div 
-            className="flex items-center gap-3 cursor-pointer" 
+            className="flex items-center gap-4 cursor-pointer" 
             onClick={() => { setCurrentFamily(null); setSelectedRecipeId(null); }}
           >
-            <div className="bg-hw-orange p-2 rounded-xl shadow-lg">
-              <ChefHat className="text-white w-6 h-6" />
-            </div>
-            <h1 className="text-xl font-black text-hw-text tracking-tighter uppercase">
+            {/* LOGO CORPORATIVO */}
+            <img 
+              src="/logo-hotwings.png" 
+              alt="Hot Wings Logo" 
+              className="h-12 w-auto object-contain"
+              onError={(e) => {
+                // Fallback en caso de que la imagen no cargue
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            
+            <h1 className="text-xl font-black text-hw-text tracking-tight uppercase">
               HotWings<span className="text-hw-orange">Matriz</span>
             </h1>
           </div>
