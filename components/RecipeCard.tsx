@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Layers, DollarSign, Tag } from 'lucide-react';
+import { Layers } from 'lucide-react';
 import { RecipeWithIngredients } from '../types';
 
 interface RecipeCardProps {
@@ -9,7 +9,19 @@ interface RecipeCardProps {
 }
 
 const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, onClick }) => {
-  const imageUrl = recipe.foto ? recipe.foto : `https://picsum.photos/seed/${recipe.id_receta}/400/300`;
+  // Lógica de resolución de imagen
+  const resolveImageUrl = (foto: string) => {
+    if (!foto || foto.trim().length < 3) {
+      return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400&auto=format&fit=crop';
+    }
+    if (foto.startsWith('http')) {
+      return foto;
+    }
+    // Si no es URL completa, asumimos que es un archivo en la carpeta de imágenes del proyecto
+    return `/images/${foto}`;
+  };
+
+  const imageUrl = resolveImageUrl(recipe.foto);
 
   return (
     <div 
@@ -21,14 +33,15 @@ const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, onClick }) => {
           src={imageUrl} 
           alt={recipe.nombre_receta}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          loading="lazy"
           onError={(e) => {
-            (e.target as HTMLImageElement).src = 'https://picsum.photos/400/300?text=Cargando...';
+            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?q=80&w=400&auto=format&fit=crop';
           }}
         />
         <div className="absolute top-4 left-4 bg-orange-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
           {recipe.familia}
         </div>
-        {recipe.valor_venta && (
+        {recipe.valor_venta && recipe.valor_venta > 0 && (
           <div className="absolute bottom-4 right-4 bg-zinc-900/90 backdrop-blur-md text-white px-3 py-1.5 rounded-xl text-xs font-black shadow-xl border border-zinc-700">
             ${recipe.valor_venta.toLocaleString()}
           </div>

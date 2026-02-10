@@ -13,7 +13,7 @@ function normKey(x: any): string {
 }
 
 /**
- * A) Leer la hoja completa con un “ref extendido” y rellenar MERGES.
+ * Leer la hoja completa con un “ref extendido” y rellenar MERGES.
  */
 function sheetToFullMatrixWide(sheet: any, maxRows = 700, maxCols = 50): any[][] {
   const XLSX = (window as any).XLSX;
@@ -55,17 +55,15 @@ function sheetToFullMatrixWide(sheet: any, maxRows = 700, maxCols = 50): any[][]
 }
 
 /**
- * B) Detector de headers MULTI-SEÑAL (acepta Artículo O Ingrediente).
+ * Detector de headers MULTI-SEÑAL (acepta Artículo O Ingrediente).
  */
 function isHeaderRow(row: any[]): boolean {
   const r = (row || []).map(normKey);
   
-  // Columna principal puede ser Artículo o Ingrediente
   const hasItem = 
     r.some(v => /art.?culo/.test(v)) || 
     r.some(v => v.includes("ingrediente"));
 
-  // Señales de tabla (Al menos 1 señal adicional para confirmar que es tabla de costos)
   const signals = [
     r.some(v => v.includes("unidad") || v === "und"),
     r.some(v => v.includes("unidades") || v.includes("cant") || v.includes("cantidad")),
@@ -109,6 +107,18 @@ function findRecipeTitle(matrix: any[][], headerRowIdx: number): { nombre: strin
   return { nombre: `RECETA SIN NOMBRE (FILA ${headerRowIdx + 1})`, titleRowIdx: headerRowIdx };
 }
 
+function getValueInColumnInRange(matrix: any[][], startRow: number, endRow: number, colIdx: number): string {
+  if (colIdx === -1) return "";
+  for (let r = startRow; r <= endRow; r++) {
+    const v = (matrix[r]?.[colIdx] ?? "").toString().trim();
+    // Si la celda tiene contenido real, lo tomamos como URL o nombre de archivo
+    if (v && v.length >= 3) {
+      return v;
+    }
+  }
+  return "";
+}
+
 function getTextBelowLabelInBlock(matrix: any[][], startRow: number, endRow: number, labels: string[]): string {
   const targets = labels.map(normKey);
   for (let r = startRow; r <= endRow; r++) {
@@ -133,10 +143,6 @@ function parseFamilySheet(sheetName: string, sheet: any): RecipeWithIngredients[
   const headerRows = findHeaderRows(matrix);
   const recipes: RecipeWithIngredients[] = [];
 
-  if (sheetName.toUpperCase() === "ALITAS") {
-    console.log(`%c[ALITAS] Encabezados detectados: ${headerRows.length}`, "color: #ea580c; font-weight: bold;");
-  }
-
   for (let i = 0; i < headerRows.length; i++) {
     const headerRowIdx = headerRows[i];
     const nextHeader = (i < headerRows.length - 1) ? headerRows[i + 1] : matrix.length;
@@ -155,13 +161,20 @@ function parseFamilySheet(sheetName: string, sheet: any): RecipeWithIngredients[
     const colUnd = norm.findIndex(v => v.includes("unidad") || v === "und");
     const colCant = norm.findIndex(v => v.includes("unidades") || v.includes("cantidad") || v.includes("cant"));
     const colCostoLin = norm.findIndex(v => v.includes("coste") || v.includes("costo") || v.includes("subtotal"));
+    
+    // Detección de columna FOTO (O por defecto = índice 14)
+    let colFoto = norm.findIndex(v => v === "foto" || v.includes("foto"));
+    if (colFoto === -1) colFoto = 14; 
+
+    // Buscar el valor de la foto en el bloque de la receta
+    const blockStartSearch = Math.max(0, titleRowIdx);
+    const fotoValue = getValueInColumnInRange(matrix, blockStartSearch, blockEnd, colFoto);
 
     if (colItem === -1) continue;
 
     const items: Ingredient[] = [];
     for (let r = headerRowIdx + 1; r <= blockEnd; r++) {
       const articulo = (matrix[r]?.[colItem] ?? "").toString().trim();
-      // Si la celda está vacía o detectamos el inicio de otra sección técnica, cortamos
       if (!articulo || normKey(articulo).includes("costo del plato") || normKey(articulo).includes("valor de venta")) break;
 
       items.push({
@@ -185,7 +198,7 @@ function parseFamilySheet(sheetName: string, sheet: any): RecipeWithIngredients[
         procesoElaboracion: proc,
         rendimiento: "1",
         unidad_rendimiento: "PORCIÓN",
-        foto: "",
+        foto: fotoValue,
         ingredients: items,
         costo_plato: Math.round(Number(costo) || 0),
         valor_venta: Math.round(Number(venta) || 0)

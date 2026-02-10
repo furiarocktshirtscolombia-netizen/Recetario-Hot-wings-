@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, TrendingUp, FileText, ChefHat, List, Play } from 'lucide-react';
+import { ArrowLeft, FileText, ChefHat, List, Play } from 'lucide-react';
 import { RecipeWithIngredients } from '../types';
 import KitchenMode from './KitchenMode';
 
@@ -9,7 +9,6 @@ interface RecipeDetailProps {
   onBack: () => void;
 }
 
-/** Devuelve el primer valor no vacío entre varias llaves posibles. */
 function pick<T = any>(obj: any, keys: string[], fallback?: T): T {
   if (!obj) return fallback as T;
   for (const k of keys) {
@@ -20,7 +19,6 @@ function pick<T = any>(obj: any, keys: string[], fallback?: T): T {
   return fallback as T;
 }
 
-/** Convierte a número si viene como string con separadores. */
 function toNumber(v: any): number | null {
   if (v === 0) return 0;
   if (v === undefined || v === null) return null;
@@ -33,13 +31,10 @@ function toNumber(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Normaliza un arreglo de ingredientes venga como venga. */
 function normalizeIngredients(recipe: any) {
-  const raw =
-    pick<any[]>(recipe, ['ingredients', 'ingredientes', 'items', 'insumos', 'matriz'], []) || [];
-
+  const raw = pick<any[]>(recipe, ['ingredients', 'ingredientes', 'items', 'insumos', 'matriz'], []) || [];
   return raw.map((ing: any) => ({
-    insumo: pick<string>(ing, ['insumo', 'articulo', 'artículo', 'Articulo', 'Artículo', 'ingrediente', 'nombre'], '—'),
+    insumo: pick<string>(ing, ['insumo', 'articulo', 'artículo', 'ingrediente', 'nombre'], '—'),
     cantidad: pick<any>(ing, ['cantidad', 'qty', 'unidades_netas', 'unidadesNetas', 'unidades', 'cant'], '—'),
     unidad: pick<string>(ing, ['unidad', 'udm', 'unidad_medida', 'unidadMedida', 'unit'], '—'),
     merma: pick<any>(ing, ['merma', '%_merma', 'porc_merma', 'porcentaje_merma', 'percentMerma'], ''),
@@ -50,11 +45,11 @@ function normalizeIngredients(recipe: any) {
 const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
   const [showKitchenMode, setShowKitchenMode] = useState(false);
 
-  // ✅ Normaliza campos principales
   const familia = pick<string>(recipe, ['familia', 'family', 'categoria', 'category'], 'Sin familia');
   const nombreReceta = pick<string>(recipe, ['nombre_receta', 'nombreReceta', 'nombre', 'receta', 'title', 'name'], 'Receta');
   const costoPlato = toNumber(pick<any>(recipe, ['costo_plato', 'costoPlato', 'costo', 'costo_receta', 'costoReceta'], null));
   const valorVenta = toNumber(pick<any>(recipe, ['valor_venta', 'valorVenta', 'venta', 'precio_venta', 'precioVenta', 'precio'], null));
+  const foto = pick<string>(recipe, ['foto', 'fotoUrl', 'imageUrl', 'image'], '');
 
   const desc = pick<string>(recipe, ['descripcionCarta', 'descripcion_carta', 'DescripcionCarta', 'descripcion', 'descCarta'], 'Pendiente de registro en matriz.');
   const proc = pick<string>(recipe, ['procesoElaboracion', 'proceso_elaboracion', 'ProcesoElaboracion', 'preparacion', 'preparación', 'procedimiento'], 'Pendiente de registro en matriz.');
@@ -69,8 +64,21 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
     valor_venta: valorVenta,
     descripcionCarta: desc,
     procesoElaboracion: proc,
+    foto,
     ingredients, 
-  }), [recipe, familia, nombreReceta, costoPlato, valorVenta, desc, proc, ingredients]);
+  }), [recipe, familia, nombreReceta, costoPlato, valorVenta, desc, proc, foto, ingredients]);
+
+  const resolveImageUrl = (foto: string) => {
+    if (!foto || foto.trim().length < 3) {
+      return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop';
+    }
+    if (foto.startsWith('http')) {
+      return foto;
+    }
+    return `/images/${foto}`;
+  };
+
+  const imageUrl = resolveImageUrl(foto);
 
   if (showKitchenMode) {
     return <KitchenMode recipe={normalizedRecipe} onExit={() => setShowKitchenMode(false)} />;
@@ -97,12 +105,27 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100">
-            <div>
+          <div className="bg-white rounded-[2.5rem] shadow-xl border border-gray-100 overflow-hidden">
+            <div className="h-64 bg-gray-100">
+              <img 
+                src={imageUrl} 
+                alt={nombreReceta} 
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?q=80&w=800&auto=format&fit=crop';
+                }}
+              />
+            </div>
+            <div className="p-8">
               <span className="text-xs font-black text-orange-600 uppercase tracking-[0.3em]">{familia}</span>
               <h2 className="text-4xl font-black text-zinc-900 leading-tight uppercase tracking-tighter mt-1">
                 {nombreReceta}
               </h2>
+              {valorVenta && valorVenta > 0 && (
+                <div className="mt-4 inline-block bg-zinc-900 text-white px-4 py-2 rounded-xl font-black">
+                  PVP: ${valorVenta.toLocaleString()}
+                </div>
+              )}
             </div>
           </div>
 
