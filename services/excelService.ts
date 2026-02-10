@@ -1,123 +1,208 @@
 
 import { RecipeWithIngredients, Ingredient } from '../types';
 
+/**
+ * Normalización robusta para manejar tildes, caracteres invisibles y errores de codificación.
+ */
+const normKey = (x: any): string => {
+  let s = (x ?? "").toString().toLowerCase();
+  // Quitar diacríticos
+  s = s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  // Quitar caracteres invisibles/basura (soft hyphens, etc.)
+  s = s.replace(/[\u00AD\u200B-\u200D\uFEFF]/g, "");
+  // Normalizar espacios
+  return s.replace(/\s+/g, " ").trim();
+};
+
+/**
+ * Encuentra el índice de una columna buscando coincidencias en una lista de nombres posibles.
+ */
+const findColIndex = (headerRow: any[], candidates: string[]): number => {
+  const normalizedHeader = (headerRow || []).map(normKey);
+  for (let i = 0; i < normalizedHeader.length; i++) {
+    const cell = normalizedHeader[i];
+    if (!cell) continue;
+    if (candidates.some(c => cell.includes(normKey(c)))) return i;
+  }
+  return -1;
+};
+
+/**
+ * Busca las filas que actúan como encabezado de tabla de ingredientes.
+ */
+const findHeaderRows = (matrix: any[][]): number[] => {
+  const headerRows: number[] = [];
+  for (let r = 0; r < matrix.length; r++) {
+    const row = (matrix[r] || []).map(normKey);
+    // Regex para detectar "Artículo" incluso con mojibake (ArtÃ­culo)
+    const hasArticulo = row.some(v => /art.?culo/.test(v) || v.includes("articulo") || v.includes("art culo"));
+    const hasMerma = row.some(v => v.includes("merma"));
+    
+    if (hasArticulo && hasMerma) {
+      headerRows.push(r);
+    }
+  }
+  return headerRows;
+};
+
+/**
+ * Busca el nombre de la receta mirando hacia arriba en TODA la fila, no solo en columna B.
+ * Selecciona el texto más largo que parezca un título.
+ */
+const findRecipeTitle = (matrix: any[][], headerRowIdx: number): { nombre: string, titleRowIdx: number } => {
+  for (let r = headerRowIdx - 1; r >= Math.max(0, headerRowIdx - 12); r--) {
+    const row = matrix[r] || [];
+    const candidates = row
+      .map(v => (v ?? "").toString().trim())
+      .filter(v => v.length >= 4);
+
+    // Filtrar textos técnicos y ordenar por longitud para encontrar el título más probable
+    const best = candidates
+      .filter(v => {
+        const n = normKey(v);
+        return !n.includes("analisis") && !n.includes("costo") && !n.includes("valor") && !n.includes("articulo");
+      })
+      .sort((a, b) => b.length - a.length)[0];
+
+    if (best) return { nombre: best, titleRowIdx: r };
+  }
+  return { nombre: `RECETA DESCONOCIDA (FILA ${headerRowIdx + 1})`, titleRowIdx: headerRowIdx };
+};
+
+/**
+ * Busca una etiqueta en un bloque de celdas y devuelve el valor de la celda de abajo.
+ */
+const getTextBelowLabelInBlock = (matrix: any[][], startRow: number, endRow: number, labels: string[]): string => {
+  const targets = labels.map(normKey);
+  for (let r = startRow; r <= endRow; r++) {
+    const row = matrix[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const cellVal = normKey(row[c]);
+      if (targets.some(t => cellVal.includes(t))) {
+        // El valor está justo debajo
+        return (matrix[r + 1]?.[c] ?? "").toString().trim();
+      }
+    }
+  }
+  return "";
+};
+
 export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredients[] => {
   const data = new Uint8Array(arrayBuffer);
   const workbook = (window as any).XLSX.read(data, { type: 'array' });
   const allRecipes: RecipeWithIngredients[] = [];
-  
-  // 1. Primero buscamos si existe una hoja de "INFO" para metadata extra (Fotos/Prep)
-  const infoMap = new Map<string, { foto: string, preparacion: string, descripcion: string }>();
-  const infoSheetName = workbook.SheetNames.find(n => n.toLowerCase().includes('info'));
-  
-  if (infoSheetName) {
-    const infoRows: any[][] = (window as any).XLSX.utils.sheet_to_json(workbook.Sheets[infoSheetName], { header: 1 });
-    infoRows.forEach(row => {
-      const nombre = row[0]?.toString().trim().toUpperCase();
-      if (nombre) {
-        infoMap.set(nombre, {
-          foto: row[2] || "",
-          preparacion: row[3] || "",
-          descripcion: row[4] || ""
-        });
-      }
-    });
-  }
+  const excludedSheets = new Set(["INSUMOS", "MATRIZ CARTA", "DATOS", "CONFIG", "HOJA1", "MATRIZ"]);
+
+  console.log("--- PROCESANDO EXCEL (COLUMNAS DINÁMICAS) ---");
+  console.log("Hojas detectadas:", workbook.SheetNames);
 
   workbook.SheetNames.forEach((sheetName: string) => {
-    const skipSheets = ['insumos', 'matriz carta', 'hoja1', 'hoja2', 'datos', 'info', 'recetas_info'];
-    if (skipSheets.some(s => sheetName.toLowerCase().includes(s))) return;
+    if (excludedSheets.has(sheetName.toUpperCase())) return;
 
     const sheet = workbook.Sheets[sheetName];
-    const rows: any[][] = (window as any).XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    const matrix: any[][] = (window as any).XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    
+    if (!matrix || matrix.length === 0) return;
 
-    let currentRecipe: Partial<RecipeWithIngredients> | null = null;
-    let capturingPrep = false;
+    const headerRowsIdx = findHeaderRows(matrix);
+    console.log(`🔎 Hoja [${sheetName}]: ${headerRowsIdx.length} bloques detectados.`);
 
-    rows.forEach((row, index) => {
-      const cellA = row[0]?.toString().trim();
+    headerRowsIdx.forEach((hrIdx) => {
+      const headerRow = matrix[hrIdx] || [];
+      const { nombre, titleRowIdx } = findRecipeTitle(matrix, hrIdx);
       
-      // DETECTAR NUEVA RECETA (Título en Mayúsculas, sin datos al lado)
-      if (cellA && cellA.length > 3 && !row[1] && isNaN(Number(cellA))) {
-        if (currentRecipe && (currentRecipe as any).ingredients?.length > 0) {
-          allRecipes.push(currentRecipe as RecipeWithIngredients);
-        }
+      // Identificación dinámica de columnas
+      const colArticulo = findColIndex(headerRow, ["articulo", "artículo", "Articulo", "ArtÃ­culo"]);
+      const colUnidad = findColIndex(headerRow, ["unidad medida", "unidad", "udm", "und"]);
+      const colCant = findColIndex(headerRow, ["unidades netas", "cantidad", "cant", "unidades"]);
+      const colMerma = findColIndex(headerRow, ["% merma", "merma"]);
+      const colCostoLin = findColIndex(headerRow, ["coste linea", "costo linea", "subtotal", "valor total"]);
 
-        capturingPrep = false;
-        const nombreUpper = cellA.toUpperCase();
-        const extraInfo = infoMap.get(nombreUpper);
-
-        currentRecipe = {
-          id_receta: `R-${sheetName}-${index}`,
-          nombre_receta: cellA,
-          familia: sheetName,
-          categoria: "CARTA",
-          descripcion_carta: extraInfo?.descripcion || "Receta estándar de matriz de costos.",
-          preparacion: extraInfo?.preparacion || "",
-          rendimiento: "1",
-          unidad_rendimiento: "PORCIÓN",
-          foto: extraInfo?.foto || "",
-          ingredients: []
-        };
-      }
-
-      if (!currentRecipe) return;
-
-      // DETECTAR INICIO DE PREPARACIÓN DENTRO DE LA HOJA
-      const cellALower = cellA?.toLowerCase() || "";
-      if (cellALower.includes('preparacion') || cellALower.includes('procedimiento') || cellALower.includes('pasos')) {
-        capturingPrep = true;
+      if (colArticulo === -1) {
+        console.warn(`No se encontró columna 'Artículo' en receta ${nombre}. Saltando bloque.`);
         return;
       }
 
-      // Si estamos capturando preparación y la celda A tiene texto pero no es un ingrediente (no tiene unidad en B)
-      if (capturingPrep && cellA && !row[1]) {
-        currentRecipe.preparacion += (currentRecipe.preparacion ? '\n' : '') + cellA;
+      const ingredients: Ingredient[] = [];
+      // Leer ingredientes hacia abajo hasta encontrar fin de bloque
+      for (let r = hrIdx + 1; r < matrix.length; r++) {
+        const articulo = (matrix[r]?.[colArticulo] ?? "").toString().trim();
+        // Fin de ingredientes si Artículo está vacío o es un totalizador
+        if (!articulo || normKey(articulo).includes("costo del plato") || normKey(articulo).includes("valor de venta")) break;
+
+        const unidad = colUnidad !== -1 ? (matrix[r]?.[colUnidad] ?? "").toString().trim() : "";
+        const cantidad = colCant !== -1 ? matrix[r]?.[colCant] : "";
+        const merma = colMerma !== -1 ? matrix[r]?.[colMerma] : "";
+        const costoLinea = colCostoLin !== -1 ? matrix[r]?.[colCostoLin] : 0;
+
+        ingredients.push({
+          id_receta: `R-${sheetName}-${titleRowIdx}`,
+          insumo: articulo,
+          unidad: unidad,
+          cantidad: !isNaN(parseFloat(cantidad)) ? Math.round(parseFloat(cantidad) * 100) / 100 : cantidad,
+          merma: merma,
+          costo_linea: typeof costoLinea === "number" ? Math.round(costoLinea) : 0
+        });
       }
 
-      // DETECTAR INGREDIENTES (Debe tener nombre y unidad)
-      if (!capturingPrep && cellA && row[1]) {
-        const lowerVal = cellA.toLowerCase();
-        if (lowerVal.includes('artículo') || lowerVal.includes('ingrediente') || lowerVal.includes('insumo')) return;
+      // Definir rango de búsqueda para metadatos del bloque
+      const blockStart = titleRowIdx;
+      const blockEnd = Math.min(matrix.length - 1, hrIdx + ingredients.length + 30);
 
-        // Limpiar cantidad (redondear a 2 decimales para evitar el 19.99999)
-        const rawCant = parseFloat(row[2]);
-        const cantidad = !isNaN(rawCant) ? Math.round(rawCant * 100) / 100 : row[2];
-        
-        const rawCosto = parseFloat(row[4]);
-        const costo_linea = !isNaN(rawCosto) ? Math.round(rawCosto * 100) / 100 : row[4];
+      const descripcionCarta = getTextBelowLabelInBlock(
+        matrix, 
+        blockStart, 
+        blockEnd, 
+        ["descripcion de la carta", "descripcion carta"]
+      );
 
-        const ingredient: Ingredient = {
-          id_receta: currentRecipe.id_receta!,
-          insumo: cellA,
-          unidad: row[1].toString(),
-          cantidad: cantidad,
-          costo_linea: costo_linea
-        };
-        
-        if (!currentRecipe.ingredients) currentRecipe.ingredients = [];
-        currentRecipe.ingredients.push(ingredient);
+      const procesoElaboracion = getTextBelowLabelInBlock(
+        matrix, 
+        blockStart, 
+        blockEnd, 
+        ["proceso de elaboracion", "proceso de elaboración", "preparacion", "preparación", "procedimiento"]
+      );
+
+      // Extraer costos del plato
+      let costo_plato = 0;
+      let valor_venta = 0;
+      for (let r = hrIdx; r <= blockEnd; r++) {
+        const row = matrix[r] || [];
+        row.forEach((cell, cIdx) => {
+          const text = normKey(cell);
+          if (text.includes("costo del plato")) {
+            const val = row[cIdx + 1] || row[cIdx + 2];
+            if (val) costo_plato = Math.round(parseFloat(val.toString().replace(/[^0-9.]/g, '')));
+          }
+          if (text.includes("valor de venta")) {
+            const val = row[cIdx + 1] || row[cIdx + 2];
+            if (val) valor_venta = Math.round(parseFloat(val.toString().replace(/[^0-9.]/g, '')));
+          }
+        });
       }
+
+      allRecipes.push({
+        id_receta: `R-${sheetName}-${titleRowIdx}-${hrIdx}`,
+        nombre_receta: nombre,
+        familia: sheetName,
+        categoria: "CARTA",
+        descripcion_carta: descripcionCarta,
+        descripcionCarta: descripcionCarta,
+        preparacion: procesoElaboracion,
+        procesoElaboracion: procesoElaboracion,
+        rendimiento: "1",
+        unidad_rendimiento: "PORCIÓN",
+        foto: "",
+        ingredients,
+        costo_plato,
+        valor_venta
+      });
     });
-
-    if (currentRecipe && (currentRecipe as any).ingredients?.length > 0) {
-      allRecipes.push(currentRecipe as RecipeWithIngredients);
-    }
   });
 
+  const recipesTotal = allRecipes.length;
+  const familiesTotal = [...new Set(allRecipes.map(r => r.familia))].length;
+  console.log(`✅ ÉXITO: ${recipesTotal} recetas cargadas en ${familiesTotal} familias.`);
+
   return allRecipes;
-};
-
-export const fetchRecipesFromExcel = async (): Promise<RecipeWithIngredients[]> => {
-  const timestamp = new Date().getTime();
-  const excelUrl = `./data/recetario.xlsx?v=${timestamp}`;
-
-  try {
-    const response = await fetch(excelUrl);
-    if (!response.ok) throw new Error("No se encontró el Excel en /data/recetario.xlsx");
-    const arrayBuffer = await response.arrayBuffer();
-    return parseHotWingsExcel(arrayBuffer);
-  } catch (error) {
-    throw error;
-  }
 };

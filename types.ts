@@ -5,11 +5,12 @@ export interface Recipe {
   categoria: string;
   nombre_receta: string;
   descripcion_carta: string;
+  descripcionCarta?: string; 
   preparacion: string;
+  procesoElaboracion?: string;
   rendimiento: string | number;
   unidad_rendimiento: string;
   foto: string;
-  // Campos financieros de la Matriz
   costo_plato?: number;
   valor_venta?: number;
 }
@@ -19,8 +20,9 @@ export interface Ingredient {
   insumo: string;
   cantidad: number | string;
   unidad: string;
-  notas?: string;
+  merma?: string | number;
   costo_linea?: number;
+  notas?: string;
 }
 
 export interface RecipeWithIngredients extends Recipe {

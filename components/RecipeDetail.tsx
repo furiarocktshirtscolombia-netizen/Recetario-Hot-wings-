@@ -1,122 +1,211 @@
 
-import React from 'react';
-import { ChevronLeft, Play, UtensilsCrossed, TrendingUp, DollarSign, PieChart } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ArrowLeft, TrendingUp, FileText, ChefHat, List, Play } from 'lucide-react';
 import { RecipeWithIngredients } from '../types';
+import KitchenMode from './KitchenMode';
 
 interface RecipeDetailProps {
-  recipe: RecipeWithIngredients;
+  recipe: RecipeWithIngredients | any; 
   onBack: () => void;
-  onEnterKitchenMode: () => void;
 }
 
-const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack, onEnterKitchenMode }) => {
-  const imageUrl = recipe.foto ? recipe.foto : `https://picsum.photos/seed/${recipe.id_receta}/800/600`;
-  const steps = recipe.preparacion.split('\n').filter(s => s.trim() !== '');
+/** Devuelve el primer valor no vacío entre varias llaves posibles. */
+function pick<T = any>(obj: any, keys: string[], fallback?: T): T {
+  if (!obj) return fallback as T;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v === 0) return v as T;
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v as T;
+  }
+  return fallback as T;
+}
 
-  const margin = recipe.valor_venta && recipe.costo_plato 
-    ? ((recipe.valor_venta - recipe.costo_plato) / recipe.valor_venta * 100).toFixed(1) 
-    : null;
+/** Convierte a número si viene como string con separadores. */
+function toNumber(v: any): number | null {
+  if (v === 0) return 0;
+  if (v === undefined || v === null) return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const s = String(v)
+    .replace(/\./g, '')      
+    .replace(/,/g, '.')      
+    .replace(/[^\d.-]/g, ''); 
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Normaliza un arreglo de ingredientes venga como venga. */
+function normalizeIngredients(recipe: any) {
+  const raw =
+    pick<any[]>(recipe, ['ingredients', 'ingredientes', 'items', 'insumos', 'matriz'], []) || [];
+
+  return raw.map((ing: any) => ({
+    insumo: pick<string>(ing, ['insumo', 'articulo', 'artículo', 'Articulo', 'Artículo', 'ingrediente', 'nombre'], '—'),
+    cantidad: pick<any>(ing, ['cantidad', 'qty', 'unidades_netas', 'unidadesNetas', 'unidades', 'cant'], '—'),
+    unidad: pick<string>(ing, ['unidad', 'udm', 'unidad_medida', 'unidadMedida', 'unit'], '—'),
+    merma: pick<any>(ing, ['merma', '%_merma', 'porc_merma', 'porcentaje_merma', 'percentMerma'], ''),
+    costo_linea: toNumber(pick<any>(ing, ['costo_linea', 'costolinea', 'costoLinea', 'subtotal', 'costo', 'valor'], null)),
+  }));
+}
+
+const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, onBack }) => {
+  const [showKitchenMode, setShowKitchenMode] = useState(false);
+
+  // ✅ Normaliza campos principales
+  const familia = pick<string>(recipe, ['familia', 'family', 'categoria', 'category'], 'Sin familia');
+  const nombreReceta = pick<string>(recipe, ['nombre_receta', 'nombreReceta', 'nombre', 'receta', 'title', 'name'], 'Receta');
+  const costoPlato = toNumber(pick<any>(recipe, ['costo_plato', 'costoPlato', 'costo', 'costo_receta', 'costoReceta'], null));
+  const valorVenta = toNumber(pick<any>(recipe, ['valor_venta', 'valorVenta', 'venta', 'precio_venta', 'precioVenta', 'precio'], null));
+
+  const desc = pick<string>(recipe, ['descripcionCarta', 'descripcion_carta', 'DescripcionCarta', 'descripcion', 'descCarta'], 'Pendiente de registro en matriz.');
+  const proc = pick<string>(recipe, ['procesoElaboracion', 'proceso_elaboracion', 'ProcesoElaboracion', 'preparacion', 'preparación', 'procedimiento'], 'Pendiente de registro en matriz.');
+
+  const ingredients = useMemo(() => normalizeIngredients(recipe), [recipe]);
+
+  const margin = useMemo(() => {
+    if (valorVenta != null && costoPlato != null && valorVenta > 0) {
+      return (((valorVenta - costoPlato) / valorVenta) * 100).toFixed(1);
+    }
+    return null;
+  }, [valorVenta, costoPlato]);
+
+  const normalizedRecipe = useMemo(() => ({
+    ...recipe,
+    familia,
+    nombre_receta: nombreReceta,
+    costo_plato: costoPlato,
+    valor_venta: valorVenta,
+    descripcionCarta: desc,
+    procesoElaboracion: proc,
+    ingredients, 
+  }), [recipe, familia, nombreReceta, costoPlato, valorVenta, desc, proc, ingredients]);
+
+  if (showKitchenMode) {
+    return <KitchenMode recipe={normalizedRecipe} onExit={() => setShowKitchenMode(false)} />;
+  }
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="flex items-center gap-2 text-gray-600 hover:text-orange-600 font-bold transition group">
-          <div className="bg-white p-2 rounded-full shadow-sm border border-gray-100 group-hover:bg-orange-50">
-            <ChevronLeft className="w-5 h-5" />
-          </div>
-          Volver al Menú
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-gray-400 hover:text-orange-600 font-bold transition"
+        >
+          <ArrowLeft className="w-5 h-5" /> VOLVER AL LISTADO
         </button>
-        <button onClick={onEnterKitchenMode} className="flex items-center gap-2 bg-orange-600 text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-orange-200 hover:bg-orange-700 hover:scale-105 active:scale-95 transition">
+
+        <button
+          onClick={() => setShowKitchenMode(true)}
+          className="bg-orange-600 hover:bg-zinc-900 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center gap-3 shadow-xl transition-all active:scale-95"
+        >
           <Play className="w-5 h-5 fill-current" />
-          MODO COCINA
+          Iniciar Modo Cocina
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-6">
-          <div className="rounded-[2.5rem] overflow-hidden shadow-2xl aspect-square bg-gray-100 border-8 border-white">
-             <img src={imageUrl} alt={recipe.nombre_receta} className="w-full h-full object-cover" />
-          </div>
-          
-          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100 space-y-8">
             <div>
-              <span className="text-xs font-black text-orange-500 uppercase tracking-[0.3em]">{recipe.familia}</span>
-              <h2 className="text-3xl font-black text-gray-900 leading-none mt-1 uppercase tracking-tighter">{recipe.nombre_receta}</h2>
+              <span className="text-xs font-black text-orange-600 uppercase tracking-[0.3em]">{familia}</span>
+              <h2 className="text-4xl font-black text-zinc-900 leading-tight uppercase tracking-tighter mt-1">
+                {nombreReceta}
+              </h2>
             </div>
 
-            {recipe.valor_venta && (
-              <div className="grid grid-cols-2 gap-3 p-4 bg-orange-50 rounded-2xl border border-orange-100">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-orange-400 uppercase">Costo Matriz</span>
-                  <span className="text-xl font-black text-orange-700">${recipe.costo_plato?.toLocaleString()}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-orange-400 uppercase">Venta Sugerida</span>
-                  <span className="text-xl font-black text-orange-900">${recipe.valor_venta?.toLocaleString()}</span>
-                </div>
-                <div className="col-span-2 pt-2 border-t border-orange-200 flex items-center justify-between">
-                  <span className="text-[10px] font-black text-orange-500 uppercase">Margen Bruto</span>
-                  <div className="flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3 text-green-600" />
-                    <span className="font-black text-green-700">{margin}%</span>
+            {costoPlato != null && costoPlato > 0 ? (
+              <div className="p-6 bg-zinc-900 rounded-[2rem] text-white space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Costo Matriz</span>
+                    <p className="text-2xl font-black text-orange-500">${costoPlato.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Valor Venta</span>
+                    <p className="text-2xl font-black text-white">
+                      {valorVenta != null ? `$${valorVenta.toLocaleString()}` : '—'}
+                    </p>
                   </div>
                 </div>
+                {margin && (
+                  <div className="pt-6 border-t border-zinc-800 flex items-center justify-between">
+                    <span className="text-[10px] font-black text-zinc-400 uppercase">Utilidad Bruta</span>
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-green-400" />
+                      <span className="text-3xl font-black text-green-400">{margin}%</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-6 bg-gray-50 rounded-[2rem] text-center border-2 border-dashed border-gray-200">
+                <p className="text-xs font-bold text-gray-400 uppercase">Análisis de costos no disponible</p>
               </div>
             )}
-            
-            <p className="text-gray-500 leading-relaxed italic text-sm">"{recipe.descripcion_carta}"</p>
+          </div>
+
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+            <h3 className="text-sm font-black text-zinc-900 mb-4 flex items-center gap-2 uppercase tracking-widest border-b border-gray-50 pb-2">
+              <FileText className="w-5 h-5 text-orange-600" />
+              🧾 Descripción Carta
+            </h3>
+            <div className="p-5 bg-orange-50/50 rounded-2xl">
+              <p className="text-zinc-700 font-bold italic leading-relaxed text-lg">{desc}</p>
+            </div>
           </div>
         </div>
 
-        <div className="lg:col-span-2 space-y-8">
-          <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
-            <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
-              <div className="w-1.5 h-6 bg-orange-600 rounded-full"></div>
+        <div className="lg:col-span-8 space-y-8">
+          <section className="bg-white p-8 md:p-10 rounded-[3rem] shadow-sm border border-gray-100">
+            <h3 className="text-xl font-black text-zinc-900 mb-8 flex items-center gap-3">
+              <List className="w-6 h-6 text-orange-600" />
               MATRIZ DE INGREDIENTES
             </h3>
-            <div className="overflow-hidden rounded-2xl border border-gray-50">
-              <table className="w-full text-left">
-                <thead className="bg-gray-50">
-                  <tr className="text-gray-400 uppercase text-[10px] font-black tracking-widest">
-                    <th className="py-4 px-4">Artículo / Insumo</th>
-                    <th className="py-4 px-4 text-right">Cant.</th>
-                    <th className="py-4 px-4">Unidad</th>
-                    {recipe.ingredients[0]?.costo_linea && <th className="py-4 px-4 text-right">Costo</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {recipe.ingredients.map((ing, idx) => (
-                    <tr key={idx} className="hover:bg-orange-50/30 transition-colors">
-                      <td className="py-4 px-4 font-black text-gray-700">{ing.insumo}</td>
-                      <td className="py-4 px-4 text-right font-mono text-orange-600 font-black text-lg">{ing.cantidad}</td>
-                      <td className="py-4 px-4 text-gray-500 font-bold uppercase text-xs">{ing.unidad}</td>
-                      {ing.costo_linea && (
-                        <td className="py-4 px-4 text-right font-mono text-gray-400 text-sm">
-                          ${ing.costo_linea.toLocaleString()}
-                        </td>
-                      )}
+
+            {!ingredients.length ? (
+              <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 text-gray-500 font-bold">
+                No se detectaron ingredientes para esta receta.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-gray-400 uppercase text-[10px] font-black tracking-[0.2em] border-b border-gray-100">
+                      <th className="pb-6 px-2">Artículo</th>
+                      <th className="pb-6 px-2 text-right">Cantidad</th>
+                      <th className="pb-6 px-2">Unidad</th>
+                      <th className="pb-6 px-2 text-right">Subtotal</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {ingredients.map((ing: any, idx: number) => (
+                      <tr key={idx} className="group hover:bg-orange-50/30 transition-colors">
+                        <td className="py-5 px-2 font-black text-zinc-800 text-lg uppercase tracking-tight">
+                          {ing.insumo}
+                        </td>
+                        <td className="py-5 px-2 text-right font-black text-2xl text-orange-600 font-mono">
+                          {ing.cantidad}
+                        </td>
+                        <td className="py-5 px-2 text-zinc-400 font-bold uppercase text-xs">{ing.unidad}</td>
+                        <td className="py-5 px-2 text-right font-mono text-zinc-400 text-sm">
+                          {ing.costo_linea != null ? `$${Number(ing.costo_linea).toLocaleString()}` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
 
-          <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
-            <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
-              <div className="w-1.5 h-6 bg-zinc-900 rounded-full"></div>
-              PROCESO DE ELABORACIÓN
+          <section className="bg-zinc-900 p-8 md:p-12 rounded-[3.5rem] shadow-2xl border-t-8 border-orange-600">
+            <h3 className="text-2xl font-black text-white mb-8 flex items-center gap-3 italic">
+              <ChefHat className="w-8 h-8 text-orange-500" />
+              👨‍🍳 PROCESO DE ELABORACIÓN
             </h3>
-            <div className="grid gap-4">
-              {steps.map((step, idx) => (
-                <div key={idx} className="flex gap-4 items-start p-4 hover:bg-gray-50 rounded-2xl transition-colors">
-                  <span className="flex-shrink-0 w-8 h-8 rounded-xl bg-zinc-900 text-white flex items-center justify-center font-black text-xs shadow-lg">
-                    {idx + 1}
-                  </span>
-                  <p className="text-gray-700 leading-relaxed font-medium">{step}</p>
-                </div>
-              ))}
-              {steps.length === 0 && <p className="text-gray-400 italic bg-gray-50 p-6 rounded-2xl text-center">No se ha registrado el proceso detallado para esta receta.</p>}
+            <div className="bg-zinc-800 p-8 md:p-10 rounded-[2.5rem] border border-zinc-700 shadow-inner">
+              <pre className="text-white text-2xl md:text-3xl leading-relaxed font-black whitespace-pre-wrap font-sans tracking-tight">
+                {proc}
+              </pre>
             </div>
           </section>
         </div>
