@@ -1,0 +1,42 @@
+
+{
+  "recetas": [
+    {
+      "id_receta": "HW001",
+      "familia": "ALITAS",
+      "categoria": "ENTRADA",
+      "nombre_receta": "ALITAS X 6UND (BUFFALO)",
+      "descripcion_carta": "Alitas de pollo clásicas bañadas en salsa Buffalo artesanal.",
+      "preparacion": "1. Freír las alitas a 180°C por 8 minutos.\n2. Escurrir exceso de grasa.\n3. En un bowl, mezclar con 50ml de salsa Buffalo.\n4. Servir con bastones de apio y dip de queso azul.",
+      "rendimiento": "1",
+      "unidad_rendimiento": "Orden",
+      "foto": "https://images.unsplash.com/photo-1527477396000-e27163b481c2?q=80&w=800",
+      "costo_plato": 12500,
+      "valor_venta": 28900,
+      "ingredients": [
+        { "insumo": "Alitas de pollo", "cantidad": 6, "unidad": "und", "costo_linea": 8500 },
+        { "insumo": "Salsa Buffalo", "cantidad": 50, "unidad": "ml", "costo_linea": 2500 },
+        { "insumo": "Apio", "cantidad": 30, "unidad": "g", "costo_linea": 500 },
+        { "insumo": "Dip Queso Azul", "cantidad": 1, "unidad": "oz", "costo_linea": 1000 }
+      ]
+    },
+    {
+      "id_receta": "HW002",
+      "familia": "FUERTES",
+      "categoria": "PLATO FUERTE",
+      "nombre_receta": "HAMBURGUESA RANCHERA",
+      "descripcion_carta": "Hamburguesa con tocineta, aros de cebolla y salsa BBQ.",
+      "preparacion": "1. Sellar carne.\n2. Tostar pan.\n3. Armar: Base, lechuga, tomate, carne, queso, tocineta y aros.\n4. Bañar con BBQ.",
+      "rendimiento": "1",
+      "unidad_rendimiento": "Und",
+      "foto": "https://images.unsplash.com/photo-1594212699903-ec8a3eca50f5?q=80&w=800",
+      "costo_plato": 15800,
+      "valor_venta": 34500,
+      "ingredients": [
+        { "insumo": "Carne 150g", "cantidad": 1, "unidad": "und", "costo_linea": 9500 },
+        { "insumo": "Pan Brioche", "cantidad": 1, "unidad": "und", "costo_linea": 1800 },
+        { "insumo": "Tocineta", "cantidad": 2, "unidad": "loncha", "costo_linea": 2500 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Recetario Pro de Cocina",
+  "description": "Una aplicación interactiva para gestión de recetas de cocina que se sincroniza automáticamente con un archivo Excel en GitHub, diseñada con un 'Modo Cocina' de alta legibilidad.",
+  "requestFramePermissions": []
+}
