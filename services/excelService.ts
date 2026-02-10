@@ -15,6 +15,28 @@ const normKey = (x: any): string => {
 };
 
 /**
+ * Filtra candidatos a título que contienen palabras clave técnicas o de etiquetas.
+ */
+const isBadTitleCandidate = (txt: any): boolean => {
+  const t = normKey(txt);
+  if (!t) return true;
+
+  // Palabras que NO pueden ser nombre de receta
+  const banned = [
+    "descripcion", "carta",
+    "proceso", "elaboracion", "elaboración",
+    "analisis", "análisis",
+    "articulo", "artículo",
+    "unidad", "unidades",
+    "merma", "coste", "costo",
+    "valor", "venta",
+    "matriz", "ingredientes"
+  ];
+
+  return banned.some(w => t.includes(w));
+};
+
+/**
  * Encuentra el índice de una columna buscando coincidencias en una lista de nombres posibles.
  */
 const findColIndex = (headerRow: any[], candidates: string[]): number => {
@@ -46,27 +68,37 @@ const findHeaderRows = (matrix: any[][]): number[] => {
 };
 
 /**
- * Busca el nombre de la receta mirando hacia arriba en TODA la fila, no solo en columna B.
- * Selecciona el texto más largo que parezca un título.
+ * Versión PRO de findRecipeTitle: Busca hacia arriba y escoge el mejor texto "tipo título"
+ * filtrando etiquetas técnicas indeseadas.
  */
 const findRecipeTitle = (matrix: any[][], headerRowIdx: number): { nombre: string, titleRowIdx: number } => {
-  for (let r = headerRowIdx - 1; r >= Math.max(0, headerRowIdx - 12); r--) {
+  let best = "";
+  let bestRow = headerRowIdx;
+
+  for (let r = headerRowIdx - 1; r >= Math.max(0, headerRowIdx - 15); r--) {
     const row = matrix[r] || [];
+
+    // Tomamos solo textos con longitud razonable que no sean etiquetas técnicas
     const candidates = row
       .map(v => (v ?? "").toString().trim())
-      .filter(v => v.length >= 4);
+      .filter(v => v.length >= 4 && !isBadTitleCandidate(v));
 
-    // Filtrar textos técnicos y ordenar por longitud para encontrar el título más probable
-    const best = candidates
-      .filter(v => {
-        const n = normKey(v);
-        return !n.includes("analisis") && !n.includes("costo") && !n.includes("valor") && !n.includes("articulo");
-      })
-      .sort((a, b) => b.length - a.length)[0];
+    // Preferencia: el más largo (suele ser el nombre completo)
+    const localBest = candidates.sort((a, b) => b.length - a.length)[0];
 
-    if (best) return { nombre: best, titleRowIdx: r };
+    if (localBest) {
+      best = localBest;
+      bestRow = r;
+      break; // primer match bueno hacia arriba
+    }
   }
-  return { nombre: `RECETA DESCONOCIDA (FILA ${headerRowIdx + 1})`, titleRowIdx: headerRowIdx };
+
+  // Fallback si no encuentra
+  if (!best) {
+    best = `RECETA SIN NOMBRE (FILA ${headerRowIdx + 1})`;
+  }
+
+  return { nombre: best, titleRowIdx: bestRow };
 };
 
 /**
@@ -93,7 +125,7 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
   const allRecipes: RecipeWithIngredients[] = [];
   const excludedSheets = new Set(["INSUMOS", "MATRIZ CARTA", "DATOS", "CONFIG", "HOJA1", "MATRIZ"]);
 
-  console.log("--- PROCESANDO EXCEL (COLUMNAS DINÁMICAS) ---");
+  console.log("--- PROCESANDO EXCEL (VERSIÓN PRO) ---");
   console.log("Hojas detectadas:", workbook.SheetNames);
 
   workbook.SheetNames.forEach((sheetName: string) => {
@@ -111,6 +143,8 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
       const headerRow = matrix[hrIdx] || [];
       const { nombre, titleRowIdx } = findRecipeTitle(matrix, hrIdx);
       
+      console.log("📌 Título detectado:", nombre, "en hoja:", sheetName, "headerRow:", hrIdx+1);
+
       // Identificación dinámica de columnas
       const colArticulo = findColIndex(headerRow, ["articulo", "artículo", "Articulo", "ArtÃ­culo"]);
       const colUnidad = findColIndex(headerRow, ["unidad medida", "unidad", "udm", "und"]);
@@ -181,6 +215,7 @@ export const parseHotWingsExcel = (arrayBuffer: ArrayBuffer): RecipeWithIngredie
         });
       }
 
+      // Fix: Removing 'nombreReceta' and 'nombre' properties to comply with RecipeWithIngredients interface
       allRecipes.push({
         id_receta: `R-${sheetName}-${titleRowIdx}-${hrIdx}`,
         nombre_receta: nombre,
